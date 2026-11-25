@@ -29,7 +29,7 @@ classifiers = [
 dependencies = [
     "Products.CMFPlone",
     "plone.api",
-    "plone.exportimport>=2.3.0",
+    "plone.exportimport>=2.0.1",
     "plone.restapi",
 ]
 
