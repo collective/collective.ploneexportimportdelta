@@ -1,15 +1,10 @@
-"""The 3-way content-delta classifier.
+"""The plan: what a new export changed against the previous one.
 
-Given three content trees:
-
-  BASE  - the content as it was last applied
-  DISK  - the content to deploy                 (what live should become)
-  LIVE  - the current site, serialized the way the exporter writes it
-
-classify, per item, the action the incremental apply WOULD take, plus a WARN
-list where applying DISK would overwrite an editor edit made on LIVE. Pure and
-read-only: it computes the plan and writes nothing. See
-the README for the model.
+classify compares two exports, the one the site was last deployed from and the
+new one, and gives per item the action a deploy takes. conflicts then says
+which of the items the plan writes an editor changed on the site since the last
+deploy, from just those items' catalog entries. Both are pure: nothing here
+reads the site or writes anything. See the README for the model.
 """
 
 from __future__ import annotations
@@ -19,6 +14,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from pathlib import Path
 from types import MappingProxyType
+from DateTime import DateTime
 from typing import Any
 from collections.abc import Mapping
 
@@ -114,7 +110,6 @@ class Action(enum.Enum):
     STATE = "state"
     DELETE = "delete"
     MOVE = "move"
-    LEAVE = "leave"  # disk unchanged but live has an editor edit — don't touch
 
 
 @dataclass
@@ -131,7 +126,6 @@ class Plan:
     states: list[str] = field(default_factory=list)
     deletes: list[str] = field(default_factory=list)
     moves: list[Move] = field(default_factory=list)
-    leaves: list[str] = field(default_factory=list)
     noops: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     redirects: list[tuple[str, str]] = field(default_factory=list)
@@ -142,6 +136,18 @@ class Plan:
 
     def actions_for(self, rel: str) -> Action:
         return self._action.get(rel, Action.NOOP)
+
+    def written(self) -> set[str]:
+        """The site paths a deploy of this plan writes, as they are on the site
+        now: a move's item is still at its old path."""
+        moved_to = {m.dst for m in self.moves}
+        return {
+            *self.creates,
+            *(rel for rel in self.updates if rel not in moved_to),
+            *self.states,
+            *self.deletes,
+            *(m.src for m in self.moves),
+        }
 
     def to_changeset(self) -> dict:
         """Serialize to the change-set the apply endpoint consumes."""
@@ -347,24 +353,22 @@ def _without_state(data: dict[str, Any], rules: CompareRules) -> str:
 
 
 def classify(  # noqa: C901
-    base: dict[str, dict],
-    disk: dict[str, dict],
-    live: dict[str, dict],
+    previous: dict[str, dict],
+    new: dict[str, dict],
     rules: CompareRules = NO_RULES,
 ) -> Plan:
-    """Classify base->disk changes, annotated against live. See the table in
-    the README. `rules`: see
+    """What `new` changed against `previous`, the export the site was last
+    deployed from. See the table in the README. `rules`: see
     cleaned_for_compare."""
     plan = Plan()
 
-    # Moves first: same UID at a different path in base vs disk. A moved item is
-    # neither a delete (of the old path) nor a create (of the new path).
-    base_by_uid = _uid_index(base)
-    disk_by_uid = _uid_index(disk)
-    move_src: dict[str, str] = {}  # old rel -> new rel
-    move_dst: dict[str, str] = {}  # new rel -> old rel
-    for uid, rel_new in disk_by_uid.items():
-        rel_old = base_by_uid.get(uid)
+    # Moves first: same UID at a different path. A moved item is neither a
+    # delete of the old path nor a create of the new one.
+    previous_by_uid = _uid_index(previous)
+    move_src: dict[str, str] = {}
+    move_dst: dict[str, str] = {}
+    for uid, rel_new in _uid_index(new).items():
+        rel_old = previous_by_uid.get(uid)
         if rel_old is not None and rel_old != rel_new:
             move_src[rel_old] = rel_new
             move_dst[rel_new] = rel_old
@@ -372,107 +376,78 @@ def classify(  # noqa: C901
             plan.redirects.append((rel_to_path(rel_old), rel_to_path(rel_new)))
             plan._action[rel_old] = Action.MOVE
 
-    for rel in sorted(set(base) | set(disk)):
+    for rel in sorted(set(previous) | set(new)):
         if rel in move_src:
-            continue  # old path of a move — already classified MOVE
-        in_base, in_disk = rel in base, rel in disk
-
-        if in_disk and not in_base:
+            continue
+        if rel not in previous:
             if rel in move_dst:
-                # New path of a move. The move carries the item, not a change
-                # to its content: one made in the same delta is an update of
-                # the new path (applied after the item is moved there). Live is
-                # still at the old path. Skipped, the change was lost and the
-                # base advanced past it, so every later delta took the stale
-                # page for an editor's edit.
-                old = move_dst[rel]
-                kb = _moved_key(base[old], rules)
-                kd = _moved_key(disk[rel], rules)
-                if kb != kd:
+                # The new path of a move: a change made in the same export is an
+                # update of the new path, applied after the item is moved there.
+                if _moved_key(previous[move_dst[rel]], rules) != _moved_key(
+                    new[rel], rules
+                ):
                     plan.updates.append(rel)
                     plan._action[rel] = Action.UPDATE
-                    kl = _moved_key(live[old], rules) if old in live else None
-                    if kl is not None and kl != kb and kl != kd:
-                        plan.warnings.append(rel)
                 continue
             plan.creates.append(rel)
             plan._action[rel] = Action.CREATE
             continue
-
-        if in_base and not in_disk:
+        if rel not in new:
             plan.deletes.append(rel)
             plan._action[rel] = Action.DELETE
             continue
-
-        # present in both base and disk
-        kb = content_key(base[rel], rules)
-        kd = content_key(disk[rel], rules)
-        kl = content_key(live[rel], rules) if rel in live else None
-        live_diverged = kl is not None and kl != kb
-
-        if kb == kd:
-            # disk didn't change this item
-            if live_diverged:
-                plan.leaves.append(rel)
-                plan._action[rel] = Action.LEAVE
-            else:
-                plan.noops.append(rel)
-                plan._action[rel] = Action.NOOP
-            continue
-
-        # Only its state changed: transition it, leave its content alone. So
-        # an editor's content edit is not overwritten, and warns only when the
-        # editor changed the state itself.
-        if _without_state(base[rel], rules) == _without_state(disk[rel], rules):
+        if content_key(previous[rel], rules) == content_key(new[rel], rules):
+            plan.noops.append(rel)
+            plan._action[rel] = Action.NOOP
+        elif _without_state(previous[rel], rules) == _without_state(new[rel], rules):
             plan.states.append(rel)
             plan._action[rel] = Action.STATE
-            live_state = live[rel].get("review_state") if rel in live else None
-            if live_state is not None and live_state not in (
-                base[rel].get("review_state"),
-                disk[rel].get("review_state"),
-            ):
-                plan.warnings.append(rel)
-            continue
-
-        # disk changed this item -> apply (disk wins)
-        plan.updates.append(rel)
-        plan._action[rel] = Action.UPDATE
-        # Warn only if applying disk would actually change live AWAY from an
-        # editor edit. If disk == live (e.g. the edit was already merged into
-        # disk), the apply is a no-op — no clobber, no warning.
-        if live_diverged and kl != kd:
-            plan.warnings.append(rel)
-
+        else:
+            plan.updates.append(rel)
+            plan._action[rel] = Action.UPDATE
     return plan
 
 
-def refresh_from_disk(
+def conflicts(
     plan: Plan,
-    rels: list[str],
-    disk: dict,
-    live: dict,
-    rules: CompareRules = NO_RULES,
-) -> None:
-    """Take each of `rels` from disk wherever live differs, whatever base says.
+    previous: dict[str, dict],
+    new: dict[str, dict],
+    on_site: Mapping[str, Mapping[str, Any] | None],
+    since: DateTime,
+) -> dict[str, str]:
+    """The items `plan` writes that an editor changed on the site after `since`,
+    the last deploy, each with why.
 
-    The classification leaves a live page that differs from an unchanged base
-    alone (LEAVE: an editor's edit) and never warns about it. A page asked for
-    by name is the person's decision that live is wrong: it becomes an update,
-    and no clobber warning, since overwriting live is the point.
+    `on_site`: for each of `plan.written()`, its catalog entry's `modified` and
+    `review_state`, or None when the site has no such item. A deploy's own
+    writes are older than the time it records, so anything modified after it
+    is an editor's. An item only changing state conflicts only with a change of
+    its state: its content is not written.
     """
-    for rel in rels:
-        if rel not in disk:
-            raise ValueError(f"refresh {rel!r}: the layout has no such page")
-        if rel not in live:
-            raise ValueError(f"refresh {rel!r}: not on the site")
-        if content_key(live[rel], rules) == content_key(disk[rel], rules):
+    found: dict[str, str] = {}
+    for rel in plan.creates:
+        if on_site.get(rel) is not None:
+            found[rel] = "already on the site"
+    states = set(plan.states)
+    for rel in sorted(plan.written() - set(plan.creates)):
+        entry = on_site.get(rel)
+        if entry is None:
+            if rel not in plan.deletes:
+                found[rel] = "not on the site"
             continue
-        for bucket in (plan.leaves, plan.noops, plan.states, plan.warnings):
-            if rel in bucket:
-                bucket.remove(rel)
-        if rel not in plan.updates:
-            plan.updates.append(rel)
-        plan._action[rel] = Action.UPDATE
+        # Publishing or retracting does not move the modification date, so a
+        # state neither export gave the item is an editor's. An export that
+        # declares no state says nothing about it.
+        known = {previous[rel].get("review_state") if rel in previous else None}
+        target = next((m.dst for m in plan.moves if m.src == rel), rel)
+        if target in new:
+            known.add(new[target].get("review_state"))
+        known.discard(None)
+        if known and entry["review_state"] not in known:
+            found[rel] = "its state changed on the site"
+        elif rel not in states and entry["modified"] > since:
+            found[rel] = "changed on the site"
+    return found
 
 
 def load_tree(content_dir: Path) -> dict[str, dict]:

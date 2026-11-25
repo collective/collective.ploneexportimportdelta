@@ -14,42 +14,60 @@ It needs Plone 6.2 (plone.exportimport 2.3.0 or later). It is a library that a d
 - **Deletes** remove the item, and its address answers 404. To send a deleted page's visitors somewhere else, add the redirect to `redirects.json`.
 - **Ordering, default pages, relations, workflow states and redirects** from the export are applied too.
 
-The site keeps its own base: the export it was last deployed from, saved in the same transaction as the content. A dry run, a failure or a refused deploy leaves both the content and the base as they were.
+## Two exports and a record
 
-## How each item is classified
+A deploy compares two exports: the one the site was last deployed from, and the new one. The caller passes both. The site keeps only a record of which export it was last deployed from (an id the caller chooses: a git commit, a bucket object's name) and when, written in the same transaction as the content. So the record is always the export the site holds: a dry run, a failure or a refused deploy leaves both as they were.
 
-Each item is compared three ways: the base (the export last deployed), the new export, and the site as it is now.
+Nothing on the site is serialized or compared with the export. What changed comes from the two exports; whether an editor changed something comes from the catalog.
 
-| The export, against the base | The site, against the base | Result |
-|---|---|---|
-| unchanged | unchanged | nothing |
-| unchanged | changed | left alone: an editor's change is kept |
-| changed | unchanged | updated |
-| changed | changed the same way | updated |
-| changed | changed another way | refused: listed under `must_merge` |
-| only its review state changed | any | transitioned; refused only if an editor changed the state |
-| new | | created |
-| gone | | deleted |
-| same UID at a new path | | moved, with a redirect from the old path |
+## What changed, and what an editor changed
 
-Fields that are not content (modification dates, versions, workflow history, what the importer itself stamps) are left out of the compare. So are values that only spell "unset" differently: `null`, `""`, `[]`, a field at its type's default, an item on its type's default view.
+| The new export, against the previous one | Result |
+|---|---|
+| unchanged | nothing |
+| changed | updated |
+| only its review state changed | transitioned, not imported again |
+| new | created |
+| gone | deleted |
+| same UID at a new path | moved, with a redirect from the old path |
+
+Fields that are not content (modification dates, versions, workflow history, what the importer itself stamps) are left out of the compare. So are values that only spell "unset" differently: `null`, `""`, `[]`.
+
+Of the items a deploy writes, it refuses (lists under `conflicts`, writes nothing) any that an editor changed on the site since the last deploy:
+
+- modified after the recorded time: the catalog's own modification date;
+- in a review state neither export gave it (publishing or retracting does not move the modification date);
+- gone from the site, when the deploy would update or move it;
+- already on the site, when the deploy would create it.
+
+An edit to an item the new export does not change is kept, and is no conflict. Changes that move neither date nor state, such as sharing, are not seen.
 
 Before it commits, a deploy also checks the site's transaction log, and refuses if an editor saved anything after the plan was made.
 
 ## From the command line
 
-In the style of plone.exportimport's `plone-importer`: a `zope.conf`, the site, and the export.
+In the style of plone.exportimport's `plone-importer`: a `zope.conf` and the site.
 
 ```sh
-plone-importer-delta instance/etc/zope.conf Plone export/ --plan
-plone-importer-delta instance/etc/zope.conf Plone export/ --commit
+# Which export is the site on?
+plone-importer-delta instance/etc/zope.conf Plone --show
+# What would deploying the new one change?
+plone-importer-delta instance/etc/zope.conf Plone --plan \
+    --previous export-a1b2c3/ --previous-id a1b2c3 \
+    --new export-d4e5f6/ --new-id d4e5f6
+# Deploy it.
+plone-importer-delta instance/etc/zope.conf Plone --commit \
+    --previous export-a1b2c3/ --previous-id a1b2c3 \
+    --new export-d4e5f6/ --new-id d4e5f6
 ```
 
+- `--show` prints the export the site was last deployed from, as JSON. Fetch that one as `--previous`.
 - `--plan` prints what a deploy would change, as JSON, and saves nothing.
-- `--commit` deploys it, in one transaction.
-- `--record-base` records the export as the site's base, after a full import with `plone-importer`.
-- `--seed-from-live` starts a site with no base from what it holds (see below).
-- `--ignore-field FIELD` leaves a field the site cannot hold out of the compare. It can be given more than once.
+- `--commit` deploys it, in one transaction, and records `--new-id`.
+- `--record ID` records `ID` as the export the site holds, after a full import with `plone-importer`.
+- `--overwrite PATH` takes a page from the new export even over an editor's change. It can be given more than once.
+- `--reset`: the new export wins everywhere (see below).
+- `--ignore-field FIELD` leaves a field out of the compare. It can be given more than once.
 
 The report is printed as JSON. The exit status is 1 when the deploy is refused or did not commit.
 
@@ -58,25 +76,23 @@ It runs wherever Zope can start with the site's `zope.conf`: over ssh, with `doc
 ## From Python
 
 ```python
-from collective.ploneexportimportdelta.stored_base import deploy_content
-from collective.ploneexportimportdelta.stored_base import has_base
-from collective.ploneexportimportdelta.stored_base import record_base
+from collective.ploneexportimportdelta.deploy import deploy
+from collective.ploneexportimportdelta.deployed import deployed
+from collective.ploneexportimportdelta.deployed import record
 
-if has_base(site):
-    report = deploy_content(site, request, export, commit=True)
-else:
-    # First deploy: import the export in full, as you do now, then
-    record_base(site, export)
-    transaction.commit()
+# First deploy: import the export in full, as you do now, then
+record(site, "a1b2c3")
+transaction.commit()
+
+# Every deploy after: fetch the export deployed(site)["export"] names.
+report = deploy(
+    site, previous, new, previous_id="a1b2c3", new_id="d4e5f6", commit=True
+)
 ```
 
-`export` is the folder that holds `content/`, and `redirects.json`, `relations.json`, `principals.json` or `site-settings.json` if the export has them. `report["apply"]["committed"]` says whether anything landed.
+An export is the folder that holds `content/`, and `redirects.json`, `relations.json`, `principals.json` or `site-settings.json` if it has them. `report["apply"]["committed"]` says whether anything landed. A deploy whose previous export is not the one the site records is refused.
 
-A site that already holds its content, and that nobody edits, can skip that full import: `deploy_content(site, request, export, commit=True, seed_from_live=True)` starts from what the site holds. The export then wins everywhere, as a full import would, so an editor's change is overwritten and content the export lacks is deleted. A site that has a base keeps it.
-
-A field your site's schema cannot hold looks like an edit on every page that has it, because no export can carry it back. Name such fields in `ignored_fields`.
-
-A site that is only a copy of its export (one being tried out before it goes live, say) can have the export win everywhere on every deploy instead: `run_delta(..., reset=True)` from `collective.ploneexportimportdelta.delta`. Pages made on the site are deleted, pages deleted on the site are made again, and every page changed on the site since the last committed deploy is taken back from the export. Each committed deploy records when it was classified, and a reset counts changes from then. A site with no deploy on record needs `changed_since`, the time to count from. The report lists what a reset undid under `reset`, and a caller's `review_changeset` sees the deletions as `site_only`.
+A site that is only a copy of its export (one being tried out before it goes live, say) can have the export win everywhere: `deploy(..., reset=True)`. Pages made on the site are deleted, pages deleted on the site are made again, and every page changed on the site since the last deploy is taken back from the export. The report lists what a reset undid under `reset`, and a caller's `review_changeset` sees the deletions as `site_only`.
 
 ## Upstream
 
