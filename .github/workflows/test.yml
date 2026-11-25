@@ -29,8 +29,6 @@ jobs:
             plone: "6.2.3"
           - python: "3.13"
             plone: "6.2.3"
-          - python: "3.12"
-            plone: "6.1.4"
     name: Python ${{ matrix.python }}, Plone ${{ matrix.plone }}
     steps:
       - uses: actions/checkout@v5
