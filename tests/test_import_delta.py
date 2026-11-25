@@ -1,0 +1,141 @@
+"""import_delta: a partial export, the UIDs to delete, and the catalog counter
+the caller last saw.
+
+The counter is Plone's `portal_catalog.getCounter()` (the number
+plone.app.caching puts in its ETags): every catalog write adds one, so any
+content change moves it and nothing else does. A deploy applies only if the
+site's counter is still the one the caller has; otherwise nothing is written
+and the caller exports, merges and tries again. What the delta does to each
+item comes from the site: a UID it does not have is a create, one at the same
+path an update, one at another path a move.
+"""
+
+from __future__ import annotations
+
+from collective.ploneexportimportdelta.delta import import_delta
+from collective.ploneexportimportdelta.delta import site_counter
+from collective.ploneexportimportdelta.delta import StaleCounter
+from plone import api
+from plone.app.redirector.interfaces import IRedirectionStorage
+from plone.exportimport.importers import get_importer
+from test_deploy import ADDED
+from test_deploy import CHANGED
+from test_deploy import KEPT
+from test_deploy import page
+from test_deploy import REMOVED
+from test_deploy import write_export
+from zope.component import getUtility
+
+import pytest
+import transaction
+
+
+@pytest.fixture
+def site(functional, tmp_path):
+    """A site imported in full, and the counter its import left."""
+    portal = functional["portal"]
+    full = write_export(tmp_path / "full", [KEPT, CHANGED, REMOVED])
+    with api.env.adopt_roles(["Manager"]):
+        get_importer(portal).import_site(full)
+    transaction.commit()
+    return portal, site_counter(portal)
+
+
+def deploy(portal, delta, **kw):
+    with api.env.adopt_roles(["Manager"]):
+        return import_delta(portal, delta, **kw)
+
+
+def test_it_writes_the_delta_and_returns_the_new_counter(site, tmp_path):
+    portal, counter = site
+    kept_before = portal["kept"]._p_serial
+    delta = write_export(tmp_path / "delta", [{**CHANGED, "title": "After"}, ADDED])
+    report = deploy(portal, delta, deletes=[REMOVED["UID"]], counter=counter)
+    assert report["committed"] is True, report
+    assert report["plan"]["creates"] == ["added"]
+    assert report["plan"]["updates"] == ["changed"]
+    assert report["plan"]["deletes"] == ["removed"]
+    transaction.begin()
+    assert portal["changed"].title == "After"
+    assert "added" in portal and "removed" not in portal
+    assert portal["kept"]._p_serial == kept_before
+    assert report["counter"] == site_counter(portal) != counter
+
+
+def test_an_editor_s_change_since_refuses_it(site, tmp_path):
+    portal, counter = site
+    with api.env.adopt_roles(["Manager"]):
+        portal["kept"].title = "An editor's change"
+        portal["kept"].reindexObject()
+    transaction.commit()
+    delta = write_export(tmp_path / "delta", [ADDED])
+    with pytest.raises(StaleCounter) as refused:
+        deploy(portal, delta, deletes=[], counter=counter)
+    assert refused.value.current == site_counter(portal) != counter
+    transaction.begin()
+    assert "added" not in portal
+
+
+def test_a_write_that_is_not_content_does_not(site, tmp_path):
+    """An image scale or a login commits, but touches no catalog entry."""
+    portal, counter = site
+    portal._p_jar.root()["not-content"] = 1
+    transaction.commit()
+    delta = write_export(tmp_path / "delta", [ADDED])
+    report = deploy(portal, delta, deletes=[], counter=counter)
+    assert report["committed"] is True, report
+
+
+def test_no_counter_overwrites_whatever_changed(site, tmp_path):
+    """For a site that is only a copy of its export."""
+    portal, _ = site
+    with api.env.adopt_roles(["Manager"]):
+        portal["changed"].title = "An editor's change"
+        portal["changed"].reindexObject()
+    transaction.commit()
+    delta = write_export(tmp_path / "delta", [{**CHANGED, "title": "After"}])
+    report = deploy(portal, delta, deletes=[], counter=None)
+    assert report["committed"] is True, report
+    transaction.begin()
+    assert portal["changed"].title == "After"
+
+
+def test_a_dry_run_writes_nothing(site, tmp_path):
+    portal, counter = site
+    delta = write_export(tmp_path / "delta", [{**CHANGED, "title": "After"}, ADDED])
+    report = deploy(
+        portal, delta, deletes=[REMOVED["UID"]], counter=counter, dry_run=True
+    )
+    assert report["committed"] is False
+    assert report["plan"]["creates"] == ["added"]
+    transaction.begin()
+    assert portal["changed"].title == "Before"
+    assert "added" not in portal and "removed" in portal
+    assert site_counter(portal) == counter
+
+
+def test_a_uid_at_another_path_is_moved(site, tmp_path):
+    portal, counter = site
+    obj = portal["changed"]
+    moved = page("renamed", "After", CHANGED["UID"])
+    delta = write_export(tmp_path / "delta", [moved])
+    report = deploy(portal, delta, deletes=[], counter=counter)
+    assert report["committed"] is True, report
+    assert report["plan"]["moves"] == [
+        {"src": "changed", "dst": "renamed", "uid": CHANGED["UID"]}
+    ]
+    transaction.begin()
+    assert "changed" not in portal
+    assert portal["renamed"].UID() == obj.UID()
+    assert portal["renamed"].title == "After"
+    portal_path = "/".join(portal.getPhysicalPath())
+    assert getUtility(IRedirectionStorage).get(f"{portal_path}/changed") == (
+        f"{portal_path}/renamed"
+    )
+
+
+def test_deleting_a_uid_the_site_lacks_fails(site, tmp_path):
+    portal, counter = site
+    delta = write_export(tmp_path / "delta", [])
+    with pytest.raises(LookupError, match="f" * 32):
+        deploy(portal, delta, deletes=["f" * 32], counter=counter)
