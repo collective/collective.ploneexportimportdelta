@@ -9,7 +9,7 @@ Given three content trees:
 classify, per item, the action the incremental apply WOULD take, plus a WARN
 list where applying DISK would overwrite an editor edit made on LIVE. Pure and
 read-only: it computes the plan and writes nothing. See
-docs/deploy-and-secure.md ("Deploy a site's content") for the model.
+the README for the model.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from dataclasses import field
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
-from typing import Mapping
+from collections.abc import Mapping
 
 import enum
 import json
@@ -261,9 +261,7 @@ def cleaned_for_compare(
     return cleaned
 
 
-def content_key(
-    data: dict[str, Any], rules: CompareRules = NO_RULES
-) -> str:
+def content_key(data: dict[str, Any], rules: CompareRules = NO_RULES) -> str:
     """Canonical JSON of the meaningful content (volatile fields removed)."""
     cleaned = cleaned_for_compare(data, rules)
     # Author-date fields (created/effective) ARE synced, but the live export and
@@ -301,10 +299,7 @@ def load_exportimport_tree(content_dir):
     for data_file in item_data_files(content_dir):
         data = json.loads(data_file.read_text())
         dirname = data_file.parent.relative_to(content_dir).as_posix()
-        if dirname == SITE_ROOT:
-            rel = SITE_ROOT
-        else:
-            rel = (data.get("@id") or "").lstrip("/")
+        rel = SITE_ROOT if dirname == SITE_ROOT else (data.get("@id") or "").lstrip("/")
         if not rel:
             continue
         tree[rel] = data
@@ -344,9 +339,7 @@ _PATH_FIELDS = ("@id", "id", "parent")
 
 
 def _moved_key(data: dict[str, Any], rules: CompareRules) -> str:
-    return content_key(
-        {k: v for k, v in data.items() if k not in _PATH_FIELDS}, rules
-    )
+    return content_key({k: v for k, v in data.items() if k not in _PATH_FIELDS}, rules)
 
 
 def _without_state(data: dict[str, Any], rules: CompareRules) -> str:
@@ -360,7 +353,7 @@ def classify(  # noqa: C901
     rules: CompareRules = NO_RULES,
 ) -> Plan:
     """Classify base->disk changes, annotated against live. See the table in
-    docs/deploy-and-secure.md ("Deploy a site's content"). `rules`: see
+    the README. `rules`: see
     cleaned_for_compare."""
     plan = Plan()
 
@@ -472,9 +465,7 @@ def refresh_from_disk(
             raise ValueError(f"refresh {rel!r}: the layout has no such page")
         if rel not in live:
             raise ValueError(f"refresh {rel!r}: not on the site")
-        if content_key(live[rel], rules) == content_key(
-            disk[rel], rules
-        ):
+        if content_key(live[rel], rules) == content_key(disk[rel], rules):
             continue
         for bucket in (plan.leaves, plan.noops, plan.states, plan.warnings):
             if rel in bucket:

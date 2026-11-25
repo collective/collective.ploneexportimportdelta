@@ -67,7 +67,7 @@ logger = logging.getLogger(__name__)
 
 # When the last committed apply was classified. A reset takes a page changed on
 # the site after it for the site's own change, and takes it back.
-APPLIED_AT_KEY = "inkaengine.inka.content_deploy.applied_at"
+APPLIED_AT_KEY = "collective.ploneexportimportdelta.applied_at"
 
 
 def last_applied(site) -> DateTime | None:
@@ -273,7 +273,7 @@ def _clobber_diff_fields(
     return diff_fields
 
 
-def run_delta(
+def run_delta(  # noqa: C901
     site,
     request,
     layout: Path,
@@ -405,9 +405,7 @@ def run_delta(
         plan.deletes += [rel for rel in site_only if rel not in plan.deletes]
         arriving = {*plan.creates, *plan.updates, *(m.dst for m in plan.moves)}
         missing = sorted(
-            rel
-            for rel in set(disk) - live_rels - {SITE_ROOT} - arriving
-            if rel in base
+            rel for rel in set(disk) - live_rels - {SITE_ROOT} - arriving if rel in base
         )
         for rel in missing:
             for bucket in (plan.noops, plan.leaves, plan.states):

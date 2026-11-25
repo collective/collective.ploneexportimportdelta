@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from inkaengine.inka.content_deploy.changeset import build_subset_dir
-from inkaengine.inka.content_deploy.changeset import ChangeSet
-from inkaengine.inka.content_deploy.changeset import data_sort_key
-from inkaengine.inka.content_deploy.changeset import load_relations
-from inkaengine.inka.content_deploy.changeset import split_id
+from collective.ploneexportimportdelta.changeset import build_subset_dir
+from collective.ploneexportimportdelta.changeset import ChangeSet
+from collective.ploneexportimportdelta.changeset import data_sort_key
+from collective.ploneexportimportdelta.changeset import load_relations
+from collective.ploneexportimportdelta.changeset import split_id
 from pathlib import Path
 
 import json

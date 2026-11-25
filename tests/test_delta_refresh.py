@@ -7,8 +7,8 @@ layout had since fixed, and no delta would ever replace it. `refresh` names
 the pages to take from the layout anyway.
 """
 
-from inkaengine.inka.content_deploy.classify import classify
-from inkaengine.inka.content_deploy.classify import refresh_from_disk
+from collective.ploneexportimportdelta.classify import classify
+from collective.ploneexportimportdelta.classify import refresh_from_disk
 
 import copy
 import pytest

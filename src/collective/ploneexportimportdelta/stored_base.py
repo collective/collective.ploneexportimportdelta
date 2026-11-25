@@ -34,7 +34,7 @@ import tempfile
 import transaction
 
 
-ANNOTATION_KEY = "inkaengine.inka.content_deploy.base"
+ANNOTATION_KEY = "collective.ploneexportimportdelta.base"
 
 
 def has_base(site) -> bool:

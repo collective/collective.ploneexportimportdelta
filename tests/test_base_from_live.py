@@ -16,7 +16,7 @@ that needs a site, and it is deliberately not in here.
 
 from __future__ import annotations
 
-from inkaengine.inka.content_deploy import base_from_live
+from collective.ploneexportimportdelta import base_from_live
 from pathlib import Path
 
 import json

@@ -13,10 +13,10 @@ the layout every page changed on the site since the last committed apply.
 from __future__ import annotations
 
 from DateTime import DateTime
-from inkaengine.inka.content_deploy.delta import DeltaRefused
-from inkaengine.inka.content_deploy.delta import last_applied
-from inkaengine.inka.content_deploy.delta import run_delta
-from inkaengine.inka.content_deploy.delta import serialize_live_candidates
+from collective.ploneexportimportdelta.delta import DeltaRefused
+from collective.ploneexportimportdelta.delta import last_applied
+from collective.ploneexportimportdelta.delta import run_delta
+from collective.ploneexportimportdelta.delta import serialize_live_candidates
 from pathlib import Path
 from plone import api
 

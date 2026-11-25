@@ -9,11 +9,11 @@ it, written in the same transaction as the apply, so the two cannot drift.
 
 from __future__ import annotations
 
-from inkaengine.inka.content_deploy.delta import DeltaRefused
-from inkaengine.inka.content_deploy.delta import serialize_live_candidates
-from inkaengine.inka.content_deploy.stored_base import deploy_content
-from inkaengine.inka.content_deploy.stored_base import has_base
-from inkaengine.inka.content_deploy.stored_base import record_base
+from collective.ploneexportimportdelta.delta import DeltaRefused
+from collective.ploneexportimportdelta.delta import serialize_live_candidates
+from collective.ploneexportimportdelta.stored_base import deploy_content
+from collective.ploneexportimportdelta.stored_base import has_base
+from collective.ploneexportimportdelta.stored_base import record_base
 from pathlib import Path
 from plone import api
 
@@ -289,7 +289,7 @@ def test_a_layouts_relations_are_applied(deployed, tmp_path):
 def test_a_type_reports_its_fields_defaults(functional):
     """What a field holds when nobody set it, from the type's schema and
     behaviors: the compare takes a field at its default for unset."""
-    from inkaengine.inka.content_deploy.delta import field_defaults_of
+    from collective.ploneexportimportdelta.delta import field_defaults_of
 
     defaults = field_defaults_of(functional["portal"])
     assert defaults["Document"]["exclude_from_nav"] is False
@@ -302,7 +302,9 @@ def deployed_from_a_thin_layout(functional, tmp_path):
     the live serializer writes it."""
     portal, request = functional["portal"], functional["request"]
     with api.env.adopt_roles(["Manager"]):
-        api.content.create(container=portal, type="Document", id="changed", title="Before")
+        api.content.create(
+            container=portal, type="Document", id="changed", title="Before"
+        )
         transaction.commit()
         live = serialize_live_candidates(portal, request, {}, {}, extra=("changed",))
         assert live["changed"]["exclude_from_nav"] is False
@@ -313,22 +315,30 @@ def deployed_from_a_thin_layout(functional, tmp_path):
     return portal, request, thin
 
 
-def test_a_default_the_page_writes_is_not_an_editors_edit(deployed_from_a_thin_layout, tmp_path):
+def test_a_default_the_page_writes_is_not_an_editors_edit(
+    deployed_from_a_thin_layout, tmp_path
+):
     """Nobody edited the page; only its default reads differently from the
     layout's. A deploy that changes the page applies."""
     portal, request, thin = deployed_from_a_thin_layout
-    second = write_layout(tmp_path / "second", {"root": ROOT, "changed": {**thin, "title": "After"}})
+    second = write_layout(
+        tmp_path / "second", {"root": ROOT, "changed": {**thin, "title": "After"}}
+    )
     with api.env.adopt_roles(["Manager"]):
         report = deploy_content(portal, request, second, commit=True)
     assert report["apply"]["committed"] is True, report["apply"]
     assert portal["changed"].title == "After"
 
 
-def test_a_page_an_editor_hid_is_still_their_edit(deployed_from_a_thin_layout, tmp_path):
+def test_a_page_an_editor_hid_is_still_their_edit(
+    deployed_from_a_thin_layout, tmp_path
+):
     portal, request, thin = deployed_from_a_thin_layout
     portal["changed"].exclude_from_nav = True
     transaction.commit()
-    second = write_layout(tmp_path / "second", {"root": ROOT, "changed": {**thin, "title": "After"}})
+    second = write_layout(
+        tmp_path / "second", {"root": ROOT, "changed": {**thin, "title": "After"}}
+    )
     with api.env.adopt_roles(["Manager"]):
         refused = deploy_content(portal, request, second, commit=True)
     assert refused["apply"]["committed"] is False
