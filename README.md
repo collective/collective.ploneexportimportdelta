@@ -36,7 +36,26 @@ Fields that are not content (modification dates, versions, workflow history, wha
 
 Before it commits, a deploy also checks the site's transaction log, and refuses if an editor saved anything after the plan was made.
 
-## Use
+## From the command line
+
+In the style of plone.exportimport's `plone-importer`: a `zope.conf`, the site, and the export.
+
+```sh
+plone-importer-delta instance/etc/zope.conf Plone export/ --plan
+plone-importer-delta instance/etc/zope.conf Plone export/ --commit
+```
+
+- `--plan` prints what a deploy would change, as JSON, and saves nothing.
+- `--commit` deploys it, in one transaction.
+- `--record-base` records the export as the site's base, after a full import with `plone-importer`.
+- `--seed-from-live` starts a site with no base from what it holds (see below).
+- `--ignore-field FIELD` leaves a field the site cannot hold out of the compare. It can be given more than once.
+
+The report is printed as JSON. The exit status is 1 when the deploy is refused or did not commit.
+
+It runs wherever Zope can start with the site's `zope.conf`: over ssh, with `docker exec`, or in a one-off container. There is no web endpoint for it: a deploy can take many minutes, which is longer than a request should hold a server worker.
+
+## From Python
 
 ```python
 from collective.ploneexportimportdelta.stored_base import deploy_content
