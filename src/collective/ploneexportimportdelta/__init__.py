@@ -1,8 +1,9 @@
-"""Deploy a plone.exportimport layout to a live site incrementally.
+"""Deploy a plone.exportimport export to a site incrementally.
 
-Only what the layout changed is applied, in one transaction, so the site is
-never missing while a deploy runs. stored_base.deploy_content is the entry
-point; see the README.
+The caller passes the export the site was last deployed from and the new one;
+only what changed between them is applied, in one transaction, and nothing an
+editor changed since is overwritten. deploy.deploy is the entry point; see the
+README.
 """
 
 __version__ = "1.0.0a1.dev0"

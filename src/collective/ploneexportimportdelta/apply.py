@@ -28,6 +28,7 @@ from plone.app.redirector.interfaces import IRedirectionStorage
 from plone.exportimport.importers.content import ContentImporter
 from Products.CMFCore.utils import getToolByName
 from Products.CMFPlone.relationhelper import restore_relations
+from collections.abc import Callable
 from typing import Any
 from zope.component import getUtility
 from zope.component.hooks import site as site_hook
@@ -459,8 +460,12 @@ def apply_changeset(
     with_relations: bool = True,
     ignore_clobber_warnings: bool = False,
     whole_metadata: bool = False,
+    before_commit: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
-    """``dir_for(rel)`` maps a change-set rel-path to the item's directory name
+    """``before_commit``: called after the last write and before the commit,
+    in the same transaction (a deploy records its export there).
+
+    ``dir_for(rel)`` maps a change-set rel-path to the item's directory name
     under ``dist_content_dir`` — identity for path-keyed trees, an @id→dirname
     index for UID-keyed exportimport trees."""
     cs: ChangeSet = (
@@ -564,6 +569,8 @@ def apply_changeset(
         transaction.abort()
         report["committed"] = False
     else:
+        if before_commit is not None:
+            before_commit()
         transaction.commit()
         report["committed"] = True
     return report
