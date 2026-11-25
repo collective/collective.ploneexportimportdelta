@@ -10,8 +10,8 @@ the target itself, so the wrapper is never the same one, and every rename was a
 cut and paste to the end of the folder.
 """
 
-from inkaengine.inka.content_deploy.apply import apply_moves
-from inkaengine.inka.content_deploy.changeset import ChangeSet
+from collective.ploneexportimportdelta.apply import apply_moves
+from collective.ploneexportimportdelta.changeset import ChangeSet
 from plone import api
 
 

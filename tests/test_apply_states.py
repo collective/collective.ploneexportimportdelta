@@ -5,9 +5,9 @@ nothing else. Re-importing each one reindexed its whole text, a PDF's included,
 and a deploy over a few hundred files ran out of time.
 """
 
-from inkaengine.inka.content_deploy.apply import apply_changeset
-from inkaengine.inka.content_deploy.apply import apply_review_states
-from inkaengine.inka.content_deploy.changeset import ChangeSet
+from collective.ploneexportimportdelta.apply import apply_changeset
+from collective.ploneexportimportdelta.apply import apply_review_states
+from collective.ploneexportimportdelta.changeset import ChangeSet
 from plone import api
 
 import json

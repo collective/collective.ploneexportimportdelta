@@ -5,7 +5,7 @@ turns the create/update slice of that change-set into a minimal
 plone.exportimport distribution dir (just the changed items + a subset
 ``__metadata__.json``) that ContentImporter can upsert. Kept free of Plone
 imports so it is unit-testable on a plain Python. See
-docs/deploy-and-secure.md ("Deploy a site's content").
+the README.
 """
 
 from __future__ import annotations

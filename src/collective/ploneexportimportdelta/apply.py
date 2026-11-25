@@ -12,8 +12,7 @@ editor edits on untouched pages — alone:
 
 ``dry_run=True`` runs every step then ``transaction.abort()`` — the real Plone
 code paths execute against real data but nothing is persisted, so it is safe to
-run against a live Data.fs snapshot. See docs/deploy-and-secure.md ("Deploy a
-site's content").
+run against a live Data.fs snapshot. See the README.
 """
 
 from __future__ import annotations

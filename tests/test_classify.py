@@ -1,15 +1,15 @@
 """The incremental-deploy classifier.
 
 Each test pins one row of the classification table in
-docs/deploy-and-secure.md ("Deploy a site's content").
+the README.
 """
 
 from __future__ import annotations
 
-from inkaengine.inka.content_deploy import changeset as _imod
-from inkaengine.inka.content_deploy import classify as _mod
-from inkaengine.inka.content_deploy.classify import cleaned_for_compare
-from inkaengine.inka.content_deploy.classify import CompareRules
+from collective.ploneexportimportdelta import changeset as _imod
+from collective.ploneexportimportdelta import classify as _mod
+from collective.ploneexportimportdelta.classify import cleaned_for_compare
+from collective.ploneexportimportdelta.classify import CompareRules
 
 import copy
 
@@ -511,11 +511,15 @@ def test_an_item_on_its_types_default_view_is_unset():
         ("Document", "document_view"),
         ("SiteOwnType", "own_view"),
     ):
-        live = doc("templates/footer", UID_X, **{"@type": portal_type, "layout": default})
+        live = doc(
+            "templates/footer", UID_X, **{"@type": portal_type, "layout": default}
+        )
         disk = doc("templates/footer", UID_X, **{"@type": portal_type})
         assert cleaned_for_compare(live, rules) == cleaned_for_compare(disk, rules)
         chosen = doc(
-            "templates/footer", UID_X, **{"@type": portal_type, "layout": "summary_view"}
+            "templates/footer",
+            UID_X,
+            **{"@type": portal_type, "layout": "summary_view"},
         )
         assert cleaned_for_compare(chosen, rules) != cleaned_for_compare(disk, rules)
 
@@ -527,7 +531,10 @@ def test_the_site_root_is_the_export_root_whatever_the_site_is_called(tmp_path):
     import json as _json
 
     items = (
-        ("plone_site_root", {"@id": "/agency", "@type": "SiteRootOfAnyType", "UID": "root"}),
+        (
+            "plone_site_root",
+            {"@id": "/agency", "@type": "SiteRootOfAnyType", "UID": "root"},
+        ),
         ("aaa", {"@id": "/Plone", "@type": "Document", "UID": "aaa"}),
     )
     for dirname, data in items:
@@ -544,8 +551,14 @@ def test_a_field_at_its_types_default_is_unset():
     (`exclude_from_nav: false`) where a layout leaves it out. The default and
     unset are the same state, as `null`, `""` and `[]` are; any other value is
     a choice and still counts. Matched by type too: `0` is not `false`."""
-    rules = CompareRules(field_defaults={"Document": {"exclude_from_nav": False, "count": 0}})
-    disk = {k: v for k, v in doc("components/form", UID_X).items() if k != "exclude_from_nav"}
+    rules = CompareRules(
+        field_defaults={"Document": {"exclude_from_nav": False, "count": 0}}
+    )
+    disk = {
+        k: v
+        for k, v in doc("components/form", UID_X).items()
+        if k != "exclude_from_nav"
+    }
     at_default = doc("components/form", UID_X, exclude_from_nav=False)
     chosen = doc("components/form", UID_X, exclude_from_nav=True)
     assert cleaned_for_compare(at_default, rules) == cleaned_for_compare(disk, rules)
@@ -553,7 +566,9 @@ def test_a_field_at_its_types_default_is_unset():
     not_the_default = doc("components/form", UID_X, count=False)
     assert "count" in cleaned_for_compare(not_the_default, rules)
     # Another type's defaults are not this one's.
-    other = doc("components/form", UID_X, **{"@type": "News Item", "exclude_from_nav": False})
+    other = doc(
+        "components/form", UID_X, **{"@type": "News Item", "exclude_from_nav": False}
+    )
     assert "exclude_from_nav" in cleaned_for_compare(other, rules)
 
 
@@ -564,7 +579,11 @@ def test_a_default_the_live_page_writes_is_not_an_editor_edit():
     else. That is an update, not a clobber. A page an editor really hid still
     warns."""
     rules = CompareRules(field_defaults={"Document": {"exclude_from_nav": False}})
-    base = {k: v for k, v in doc("components/form", UID_X).items() if k != "exclude_from_nav"}
+    base = {
+        k: v
+        for k, v in doc("components/form", UID_X).items()
+        if k != "exclude_from_nav"
+    }
     disk = dict(base, title="Forms, revised")
     live = dict(base, exclude_from_nav=False)
     plan = classify(

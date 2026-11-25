@@ -6,7 +6,7 @@ so a redirects.json written alongside the layout would never reach the site.
 pairs (apply_redirects adds the site's physical path back).
 """
 
-from inkaengine.inka.content_deploy.classify import layout_redirects
+from collective.ploneexportimportdelta.classify import layout_redirects
 
 import pytest
 
