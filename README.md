@@ -4,7 +4,7 @@ Deploy a [plone.exportimport](https://github.com/plone/plone.exportimport) expor
 
 A site whose content ships with its code is often deployed by deleting the site and importing the export again. While that import runs there is no site: every page is a 404 to visitors, on every machine that shares the database. This package applies only the difference, so visitors see the old content until the new content is complete.
 
-It needs Plone 6.2 (plone.exportimport 2.0.1 or later). It is a library that a deploy script calls inside the Plone process. It has no ZCML, profile or views, so a site never loads it.
+It needs Plone 6.2 (plone.exportimport 2.0.1 or later). A deploy script calls it inside the Plone process, or over REST with `@import-delta`, which its ZCML registers beside plone.exportimport's `@import`. It has no profile: there is nothing to install.
 
 ## What a deploy does
 
@@ -44,6 +44,32 @@ An edit to an item the new export does not change is kept, and is no conflict. C
 
 Before it commits, a deploy also checks the site's transaction log, and refuses if an editor saved anything after the plan was made.
 
+## Over REST: `@import-delta`
+
+For a site that rarely changes but for its deploys. It takes a partial export, the items that changed, and imports it with deletes and moves, in one transaction. A change since the caller's export refuses the whole deploy; the caller exports, merges in git, and tries again. The site keeps nothing of its own for it.
+
+The check is Plone's catalog counter (`portal_catalog.getCounter()`, the number plone.app.caching puts in its ETags). Every catalog write adds one, so an edit, a new or deleted page, a move or a transition moves it; an image scale or a login does not.
+
+```sh
+# Read the counter, then export: an edit during the export moves the counter.
+curl -u admin -H 'Accept: application/json' https://site/@import-delta
+# {"counter": 4120}
+
+# Deploy what changed since that export.
+curl -u admin -H 'Accept: application/json' https://site/@import-delta \
+    -F file=@delta.zip -F counter=4120 -F 'deletes=["8c1f…"]'
+```
+
+- `file`: a zip of a plone.exportimport export holding only the items to create, update or move, as `@import` takes.
+- `deletes`: a JSON list of the UIDs to delete. A partial export cannot say what is gone, so the caller lists it. A UID the site lacks fails the deploy.
+- `counter`: the counter read before the export. If the site's is another, the answer is `409` with the site's `counter`, and nothing is written.
+- `force=true` instead of `counter`: apply whatever the site changed since, for a site that is only a copy of its export. One of `counter` and `force` is required.
+- `dry_run=true`: run it all, answer the report, and write nothing.
+
+Each item's action comes from the site, by UID: one it lacks is created, one at the same path is updated, one at another path is moved there (with a redirect from the old path) and updated. The answer is the report, with the `counter` to send next time. Keep it with the export, in git, say.
+
+Intermediate commits are off, so a deploy is one transaction: what the dry run showed is what commits, or nothing does. It needs the permission `plone.exportimport.import`, as `@import` does.
+
 ## From the command line
 
 In the style of plone.exportimport's `plone-importer`: a `zope.conf` and the site.
@@ -71,7 +97,7 @@ plone-importer-delta instance/etc/zope.conf Plone --commit \
 
 The report is printed as JSON. The exit status is 1 when the deploy is refused or did not commit.
 
-It runs wherever Zope can start with the site's `zope.conf`: over ssh, with `docker exec`, or in a one-off container. There is no web endpoint for it: a deploy can take many minutes, which is longer than a request should hold a server worker.
+It runs wherever Zope can start with the site's `zope.conf`: over ssh, with `docker exec`, or in a one-off container. A site whose database only the running Zope can open (a FileStorage `Data.fs`) is deployed over REST instead.
 
 ## From Python
 
