@@ -9,7 +9,9 @@ changes during the export moves it. POST takes the partial export as a zip
 
 from __future__ import annotations
 
+from collective.ploneexportimportdelta import service
 from collective.ploneexportimportdelta.delta import site_counter
+from persistent.mapping import PersistentMapping
 from plone import api
 from plone.app.testing import SITE_OWNER_NAME
 from plone.app.testing import SITE_OWNER_PASSWORD
@@ -133,3 +135,20 @@ def test_it_needs_the_import_permission(site, tmp_path, method):
     )
     assert status == 401
     assert "added" not in portal
+
+
+def test_a_report_holding_zodb_types_is_answered(site, tmp_path, monkeypatch):
+    """The report carries what the site hands back (catalog metadata is a
+    PersistentMapping); the answer is JSON all the same."""
+    portal, counter = site
+    monkeypatch.setattr(
+        service,
+        "import_delta",
+        lambda *a, **kw: {"committed": False, "scales": PersistentMapping({"a": 1})},
+    )
+    delta = write_export(tmp_path / "delta", [ADDED])
+    body, status = call(
+        portal, "POST", {"counter": str(counter), "dry_run": "true"}, delta
+    )
+    assert status == 200, body
+    assert body["scales"] == {"a": 1}
