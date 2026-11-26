@@ -51,6 +51,9 @@ release = [
 [project.scripts]
 plone-importer-delta = "collective.ploneexportimportdelta.cli:main"
 
+[project.entry-points."plone.autoinclude.plugin"]
+target = "plone"
+
 [project.urls]
 Homepage = "https://github.com/collective/collective.ploneexportimportdelta"
 Source = "https://github.com/collective/collective.ploneexportimportdelta"

@@ -1,0 +1,24 @@
+<configure
+    xmlns="http://namespaces.zope.org/zope"
+    xmlns:plone="http://namespaces.plone.org/plone"
+    >
+
+  <include package="plone.exportimport" />
+
+  <plone:service
+      method="GET"
+      factory=".service.CounterGet"
+      for="plone.base.interfaces.IPloneSiteRoot"
+      permission="plone.exportimport.import"
+      name="@import-delta"
+      />
+
+  <plone:service
+      method="POST"
+      factory=".service.ImportDeltaPost"
+      for="plone.base.interfaces.IPloneSiteRoot"
+      permission="plone.exportimport.import"
+      name="@import-delta"
+      />
+
+</configure>
