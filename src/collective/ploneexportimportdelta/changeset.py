@@ -109,15 +109,23 @@ def item_data_files(content_dir: Path) -> list[Path]:
     return sorted(Path(content_dir).rglob("data.json"))
 
 
-def copy_item(src_dir: Path, dst_dir: Path) -> list[Path]:
-    """Copy one item's own files — its data.json and blobs — and none of the
-    items nested in its folder. Returns what it copied, relative to src_dir."""
+def own_files(src_dir: Path) -> list[Path]:
+    """One item's own files, its data.json and blobs, and none of the items
+    nested in its folder; relative to src_dir."""
     nested = [p.parent for p in src_dir.rglob("data.json") if p.parent != src_dir]
+    return [
+        f.relative_to(src_dir)
+        for f in sorted(src_dir.rglob("*"))
+        if f.is_file() and not any(n in f.parents for n in nested)
+    ]
+
+
+def copy_item(src_dir: Path, dst_dir: Path) -> list[Path]:
+    """Copy one item's own files. Returns what it copied, relative to
+    src_dir."""
     copied: list[Path] = []
-    for f in sorted(src_dir.rglob("*")):
-        if not f.is_file() or any(n in f.parents for n in nested):
-            continue
-        rel = f.relative_to(src_dir)
+    for rel in own_files(src_dir):
+        f = src_dir / rel
         (dst_dir / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(f, dst_dir / rel)
         copied.append(rel)

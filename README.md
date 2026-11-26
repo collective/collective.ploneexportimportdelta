@@ -66,6 +66,16 @@ curl -u admin -H 'Accept: application/json' https://site/@import-delta \
 - `force=true` instead of `counter`: apply whatever the site changed since, for a site that is only a copy of its export. One of `counter` and `force` is required.
 - `dry_run=true`: run it all, answer the report, and write nothing.
 
+`plone-delta-plan` writes the delta from two exports, the one the site was last deployed from and the new one. It needs no site:
+
+```sh
+plone-delta-plan export-a1b2c3/ export-d4e5f6/ delta/
+cd delta && zip -r ../delta.zip content *.json -x deletes.json
+curl … -F file=@../delta.zip -F "deletes=$(cat deletes.json)" -F counter=4120
+```
+
+Any difference in an item's `data.json` or its files sends the item, whole; `--ignore-field FIELD` leaves a field out of the compare. A moved item is sent at its new path, and `deletes.json` lists the UIDs the new export no longer has.
+
 Each item's action comes from the site, by UID: one it lacks is created, one at the same path is updated, one at another path is moved there (with a redirect from the old path) and updated. The answer is the report, with the `counter` to send next time. Keep it with the export, in git, say.
 
 Intermediate commits are off, so a deploy is one transaction: what the dry run showed is what commits, or nothing does. It needs the permission `plone.exportimport.import`, as `@import` does.
