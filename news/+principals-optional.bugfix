@@ -1,0 +1,1 @@
+A principals.json without groups or members adds none, as plone.exportimport reads it, instead of failing the import. @djay

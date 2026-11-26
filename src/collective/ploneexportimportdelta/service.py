@@ -13,6 +13,7 @@ from .delta import site_counter
 from .delta import StaleCounter
 from io import BytesIO
 from plone.exportimport.utils import zip_utils
+from plone.restapi.serializer.converters import json_compatible
 from plone.restapi.services import Service
 from typing import Any
 
@@ -50,12 +51,16 @@ class ImportDeltaPost(Service):
         deletes = json.loads(form.get("deletes", "[]"))
         export = zip_utils.import_from_zip(BytesIO(upload.read()))
         try:
-            return import_delta(
-                self.context,
-                export,
-                deletes=deletes,
-                counter=None if force else int(counter),
-                dry_run=_flag(form.get("dry_run")),
+            # The report carries what the site hands back (catalog metadata is
+            # a PersistentMapping): converted as plone.restapi converts its own.
+            return json_compatible(
+                import_delta(
+                    self.context,
+                    export,
+                    deletes=deletes,
+                    counter=None if force else int(counter),
+                    dry_run=_flag(form.get("dry_run")),
+                )
             )
         except StaleCounter as exc:
             return self._error(409, str(exc), counter=exc.current)

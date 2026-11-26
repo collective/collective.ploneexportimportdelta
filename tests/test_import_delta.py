@@ -142,6 +142,17 @@ def test_deleting_a_uid_the_site_lacks_fails(site, tmp_path):
         deploy(portal, delta, deletes=["f" * 32], counter=counter)
 
 
+def test_a_principals_file_without_groups_or_members_adds_none(site, tmp_path):
+    """Read as plone.exportimport's own importer reads it: a site that keeps
+    no accounts in its export ships `{}`, and that is no principals."""
+    portal, counter = site
+    delta = write_export(tmp_path / "delta", [ADDED])
+    (delta / "principals.json").write_text("{}")
+    report = deploy(portal, delta, deletes=[], counter=counter)
+    assert report["committed"] is True, report
+    assert report["apply"]["principals"]["users_added"] == 0
+
+
 def test_a_relation_already_on_the_site_is_left_alone(site, tmp_path):
     """relations.json is re-sent whole with every delta. Restoring and
     reindexing what is already there moved the counter on a deploy that
