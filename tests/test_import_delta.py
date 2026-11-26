@@ -26,6 +26,7 @@ from test_deploy import REMOVED
 from test_deploy import write_export
 from zope.component import getUtility
 
+import json
 import pytest
 import transaction
 
@@ -139,3 +140,27 @@ def test_deleting_a_uid_the_site_lacks_fails(site, tmp_path):
     delta = write_export(tmp_path / "delta", [])
     with pytest.raises(LookupError, match="f" * 32):
         deploy(portal, delta, deletes=["f" * 32], counter=counter)
+
+
+def test_a_relation_already_on_the_site_is_left_alone(site, tmp_path):
+    """relations.json is re-sent whole with every delta. Restoring and
+    reindexing what is already there moved the counter on a deploy that
+    changed nothing; only a missing relation is restored."""
+    portal, counter = site
+    relations = [
+        {
+            "from_uuid": KEPT["UID"],
+            "to_uuid": CHANGED["UID"],
+            "from_attribute": "relatedItems",
+        }
+    ]
+    first = write_export(tmp_path / "first", [])
+    (first / "relations.json").write_text(json.dumps(relations))
+    report = deploy(portal, first, deletes=[], counter=counter)
+    assert report["apply"]["relations"]["restored"] == 1, report
+    after_first = report["counter"]
+    again = write_export(tmp_path / "again", [])
+    (again / "relations.json").write_text(json.dumps(relations))
+    report = deploy(portal, again, deletes=[], counter=after_first)
+    assert report["apply"]["relations"]["restored"] == 0, report
+    assert report["counter"] == after_first == site_counter(portal)
