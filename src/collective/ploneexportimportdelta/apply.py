@@ -181,7 +181,10 @@ def apply_principals(dist_content_dir, report: dict[str, Any]) -> None:
     if not principals_file.exists():
         report["principals"] = "no principals.json"
         return
-    data = json.loads(principals_file.read_text())
+    raw = json.loads(principals_file.read_text())
+    # As plone.exportimport's PrincipalsImporter reads the same file: a missing
+    # list is none (a site that keeps no accounts in its export ships `{}`).
+    data = {"groups": raw.get("groups", []), "members": raw.get("members", [])}
     with api.env.adopt_roles(["Manager"]):
         groups_added = _add_groups(data["groups"])
         users_added, users_already_here = _add_members(data["members"])

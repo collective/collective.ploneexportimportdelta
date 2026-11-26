@@ -1,0 +1,1 @@
+@import-delta answers its report as JSON when it holds what the site hands back (catalog metadata is a PersistentMapping), converted as plone.restapi converts its own. @djay
