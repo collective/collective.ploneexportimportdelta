@@ -4,7 +4,7 @@ Deploy a [plone.exportimport](https://github.com/plone/plone.exportimport) expor
 
 A site whose content ships with its code is often deployed by deleting the site and importing the export again. While that import runs there is no site: every page is a 404 to visitors, on every machine that shares the database. This package applies only the difference, so visitors see the old content until the new content is complete.
 
-It needs Plone 6.2 (plone.exportimport 2.3.0 or later). A deploy script calls it inside the Plone process, or over REST with `@import-delta`, which its ZCML registers beside plone.exportimport's `@import`. It has no profile: there is nothing to install.
+It needs Plone 6.2 (plone.exportimport 2.0.1 or later). A deploy script calls it inside the Plone process, or over REST with `@import-delta`, which its ZCML registers beside plone.exportimport's `@import`. It has no profile: there is nothing to install.
 
 ## What a deploy does
 
