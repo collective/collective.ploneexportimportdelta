@@ -318,14 +318,27 @@ def apply_relations(site, dist_content_dir, report: dict[str, Any]) -> None:
         ):
             raise LookupError(f"relations.json references a missing object: {rel!r}")
 
-    restore_relations(all_relations=relations)
+    # relations.json comes whole with every delta. Restoring and reindexing a
+    # relation the site already has changes nothing but the catalog counter,
+    # which then reads as an edit; only the missing ones are restored.
+    missing = [
+        rel
+        for rel in relations
+        if not api.relation.get(
+            source=api.content.get(UID=rel["from_uuid"]),
+            target=api.content.get(UID=rel["to_uuid"]),
+            relationship=rel["from_attribute"],
+        )
+    ]
+    if missing:
+        restore_relations(all_relations=missing)
 
     # restore_relations wires the RELATION catalog but not the portal_catalog
     # image_scales metadata the listing summary renders from — reindex like the
     # RelationsImporter does (both ends).
     catalog = getToolByName(site, "portal_catalog")
     scales_keys: dict[str, Any] = {}
-    for rel in relations:
+    for rel in missing:
         from_obj = api.content.get(UID=rel["from_uuid"])
         api.content.get(UID=rel["to_uuid"]).reindexObject()
         from_obj.reindexObject(
@@ -337,7 +350,11 @@ def apply_relations(site, dist_content_dir, report: dict[str, Any]) -> None:
         scales_keys[from_obj.getId()] = (
             sorted(sc.keys()) if isinstance(sc, dict) else sc
         )
-    report["relations"] = {"restored": len(relations), "image_scales_keys": scales_keys}
+    report["relations"] = {
+        "restored": len(missing),
+        "already_there": len(relations) - len(missing),
+        "image_scales_keys": scales_keys,
+    }
 
 
 def apply_moves(

@@ -1,0 +1,1 @@
+A relation already on the site is left alone: relations.json comes whole with every delta, and restoring and reindexing what was there moved the catalog counter on a deploy that changed nothing. @djay
