@@ -14,12 +14,18 @@ from dataclasses import dataclass
 from dataclasses import field
 from pathlib import Path
 from types import MappingProxyType
-from DateTime import DateTime
 from typing import Any
+from typing import TYPE_CHECKING
 from collections.abc import Mapping
 
 import enum
 import json
+
+
+if TYPE_CHECKING:
+    # Only a type here: the planner (plan.py) loads this module on a plain
+    # Python, without Zope.
+    from DateTime import DateTime
 
 
 # Where an export keeps the site root: plone.exportimport's own name for it.
