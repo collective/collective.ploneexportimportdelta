@@ -42,7 +42,8 @@ def plan_delta(
 ) -> dict[str, Any]:
     """Write the delta from `previous` to `new` into `out`, and return what it
     does, by path: creates, updates, states (review state alone changed),
-    moves (sent at their new path, changed or not) and deletes. `ignored_fields` are left out of the compare."""
+    moves (sent at their new path, changed or not) and deletes.
+    `ignored_fields` are left out of the compare."""
     previous_tree, previous_dirs = load_exportimport_tree(Path(previous) / "content")
     new_tree, new_dirs = load_exportimport_tree(Path(new) / "content")
     previous_by_uid = {data["UID"]: rel for rel, data in previous_tree.items()}

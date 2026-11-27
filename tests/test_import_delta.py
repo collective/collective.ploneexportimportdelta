@@ -180,13 +180,11 @@ def test_a_relation_already_on_the_site_is_left_alone(site, tmp_path):
 def test_a_state_is_transitioned_without_importing_the_item(site, tmp_path):
     """A uid in `states` is transitioned to its data.json's review_state and
     not imported: an editor's change to its content is left alone."""
-    portal, counter = site
+    portal, _counter = site
     with api.env.adopt_roles(["Manager"]):
         portal["kept"].title = "Edited on the site"
     transaction.commit()
-    delta = write_export(
-        tmp_path / "delta", [{**KEPT, "review_state": "published"}]
-    )
+    delta = write_export(tmp_path / "delta", [{**KEPT, "review_state": "published"}])
     report = deploy(portal, delta, deletes=[], states=[KEPT["UID"]], counter=None)
     assert report["committed"] is True, report
     assert report["plan"]["states"] == ["kept"]
@@ -198,8 +196,6 @@ def test_a_state_is_transitioned_without_importing_the_item(site, tmp_path):
 
 def test_a_state_for_a_uid_the_site_lacks_fails(site, tmp_path):
     portal, counter = site
-    delta = write_export(
-        tmp_path / "delta", [{**ADDED, "review_state": "published"}]
-    )
+    delta = write_export(tmp_path / "delta", [{**ADDED, "review_state": "published"}])
     with pytest.raises(LookupError):
         deploy(portal, delta, deletes=[], states=[ADDED["UID"]], counter=counter)
