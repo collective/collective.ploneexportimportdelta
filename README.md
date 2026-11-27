@@ -62,6 +62,7 @@ curl -u admin -H 'Accept: application/json' https://site/@import-delta \
 
 - `file`: a zip of a plone.exportimport export holding only the items to create, update or move, as `@import` takes.
 - `deletes`: a JSON list of the UIDs to delete. A partial export cannot say what is gone, so the caller lists it. A UID the site lacks fails the deploy.
+- `states`: a JSON list of the UIDs whose review state alone changed. Each is in the export, at the path the site has it, and is transitioned to its `data.json`'s `review_state` without being imported: an import reindexes the item's whole text, a file's included. A UID the site or the export lacks fails the deploy.
 - `counter`: the counter read before the export. If the site's is another, the answer is `409` with the site's `counter`, and nothing is written.
 - `force=true` instead of `counter`: apply whatever the site changed since, for a site that is only a copy of its export. One of `counter` and `force` is required.
 - `dry_run=true`: run it all, answer the report, and write nothing.
@@ -70,11 +71,12 @@ curl -u admin -H 'Accept: application/json' https://site/@import-delta \
 
 ```sh
 plone-delta-plan export-a1b2c3/ export-d4e5f6/ delta/
-cd delta && zip -r ../delta.zip content *.json -x deletes.json
-curl … -F file=@../delta.zip -F "deletes=$(cat deletes.json)" -F counter=4120
+cd delta && zip -r ../delta.zip content *.json -x deletes.json states.json
+curl … -F file=@../delta.zip -F "deletes=$(cat deletes.json)" \
+    -F "states=$(cat states.json)" -F counter=4120
 ```
 
-Any difference in an item's `data.json` or its files sends the item, whole; `--ignore-field FIELD` leaves a field out of the compare. A moved item is sent at its new path, and `deletes.json` lists the UIDs the new export no longer has.
+Any difference in an item's `data.json` or its files sends the item, whole; `--ignore-field FIELD` leaves a field out of the compare. A moved item is sent at its new path, `deletes.json` lists the UIDs the new export no longer has, and `states.json` the UIDs of the items whose review state is all that changed.
 
 Each item's action comes from the site, by UID: one it lacks is created, one at the same path is updated, one at another path is moved there (with a redirect from the old path) and updated. The answer is the report, with the `counter` to send next time. Keep it with the export, in git, say.
 

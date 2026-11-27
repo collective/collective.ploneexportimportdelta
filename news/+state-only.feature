@@ -1,0 +1,1 @@
+An item whose review state alone changed is transitioned, not imported: `plone-delta-plan` lists it in `states.json`, and `@import-delta` takes those UIDs as `states`. An import reindexes the item's whole text, a file's included. @djay
