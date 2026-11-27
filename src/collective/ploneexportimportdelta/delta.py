@@ -51,17 +51,29 @@ def _rel_for_uid(site, uid: str) -> str | None:
     return brains[0].getPath()[len(portal_path) :].lstrip("/")
 
 
-def plan(site, tree: dict[str, dict], deletes: Iterable[str]) -> dict[str, Any]:
-    """The change-set for a partial export, read from the site by UID."""
+def plan(
+    site, tree: dict[str, dict], deletes: Iterable[str], states: Iterable[str] = ()
+) -> dict[str, Any]:
+    """The change-set for a partial export, read from the site by UID. An item
+    whose UID is in `states` is transitioned, not imported."""
     creates: list[str] = []
     updates: list[str] = []
+    state_only: list[str] = []
     moves: list[dict[str, str]] = []
+    state_uids = set(states)
     for rel, data in tree.items():
         if rel == SITE_ROOT:
             updates.append(rel)
             continue
         uid = data["UID"]
         on_site = _rel_for_uid(site, uid)
+        if uid in state_uids:
+            if on_site != rel:
+                raise LookupError(
+                    f"state change for {uid}: the site has it at {on_site}, not {rel}"
+                )
+            state_only.append(rel)
+            continue
         if on_site is None:
             creates.append(rel)
             continue
@@ -74,9 +86,13 @@ def plan(site, tree: dict[str, dict], deletes: Iterable[str]) -> dict[str, Any]:
         if on_site is None:
             raise LookupError(f"delete {uid}: the site has no such item")
         deleted.append(on_site)
+    missing = state_uids - {tree[rel]["UID"] for rel in state_only}
+    if missing:
+        raise LookupError(f"state change for {sorted(missing)}: not in the export")
     return {
         "creates": sorted(creates),
         "updates": sorted(updates),
+        "states": sorted(state_only),
         "deletes": sorted(deleted),
         "moves": moves,
     }
@@ -88,10 +104,12 @@ def import_delta(
     *,
     deletes: Iterable[str],
     counter: int | None,
+    states: Iterable[str] = (),
     dry_run: bool = False,
 ) -> dict[str, Any]:
     """Apply a partial export and `deletes` (UIDs) in one transaction; abort
-    it instead when `dry_run`.
+    it instead when `dry_run`. The items whose UIDs are in `states` are only
+    transitioned to the review_state their data.json declares.
 
     counter: the catalog counter the caller's export was taken at; raises
     StaleCounter, writing nothing, if the site's is another. None applies
@@ -104,7 +122,7 @@ def import_delta(
     if counter is not None and counter != current:
         raise StaleCounter(counter, current)
     tree, dirs = load_exportimport_tree(Path(export) / "content")
-    changeset = plan(site, tree, deletes)
+    changeset = plan(site, tree, deletes, states)
     # The engine's own check that nothing changed while it was planned: here
     # planning and applying are one transaction.
     changeset["base_tid"] = site._p_jar.db().storage.lastTransaction().hex()

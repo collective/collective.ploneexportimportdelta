@@ -1,7 +1,8 @@
 """`@import-delta`: import_delta over REST, beside plone.exportimport's `@import`.
 
 GET answers the catalog counter. POST takes a partial export as a zip in
-`file` (as `@import` does), `deletes` (a JSON list of UIDs), `dry_run`, and
+`file` (as `@import` does), `deletes` and `states` (JSON lists of UIDs: the
+items to delete, and those only to transition), `dry_run`, and
 either the `counter` the caller's export was taken at or `force`. A counter
 the site has moved past is a 409 that answers the site's current one.
 """
@@ -49,6 +50,7 @@ class ImportDeltaPost(Service):
                 "to apply whatever the site changed since",
             )
         deletes = json.loads(form.get("deletes", "[]"))
+        states = json.loads(form.get("states", "[]"))
         export = zip_utils.import_from_zip(BytesIO(upload.read()))
         try:
             # The report carries what the site hands back (catalog metadata is
@@ -58,6 +60,7 @@ class ImportDeltaPost(Service):
                     self.context,
                     export,
                     deletes=deletes,
+                    states=states,
                     counter=None if force else int(counter),
                     dry_run=_flag(form.get("dry_run")),
                 )

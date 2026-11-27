@@ -3,8 +3,8 @@
 
 GET answers the catalog counter; read it before exporting, so that whatever
 changes during the export moves it. POST takes the partial export as a zip
-(`file`, as `@import` does), `deletes` (a JSON list of UIDs), and either that
-`counter` or `force`.
+(`file`, as `@import` does), `deletes` and `states` (JSON lists of UIDs), and
+either that `counter` or `force`.
 """
 
 from __future__ import annotations
@@ -73,6 +73,18 @@ def test_post_deploys_and_answers_the_next_counter(site, tmp_path):
     assert portal["changed"].title == "After"
     assert "removed" not in portal
     assert body["counter"] == site_counter(portal)
+
+
+def test_states_are_transitioned_and_not_imported(site, tmp_path):
+    portal, counter = site
+    delta = write_export(tmp_path / "delta", [{**KEPT, "review_state": "published"}])
+    data = {"states": json.dumps([KEPT["UID"]]), "counter": str(counter)}
+    body, status = call(portal, "POST", data, delta)
+    assert status == 200, body
+    assert body["plan"]["states"] == ["kept"]
+    assert body["plan"]["updates"] == []
+    transaction.begin()
+    assert api.content.get_state(obj=portal["kept"]) == "published"
 
 
 def test_a_dry_run_answers_the_plan(site, tmp_path):

@@ -2,8 +2,11 @@
 deployed from and the new one. Runs anywhere; no site is needed.
 
 The delta is a plone.exportimport export of the items to create, update or
-move (a moved item at its new path: the site finds it by UID), and
-`deletes.json`, the UIDs of the items the new export no longer has.
+move (a moved item at its new path: the site finds it by UID),
+`deletes.json`, the UIDs of the items the new export no longer has, and
+`states.json`, the UIDs of the items whose review state alone changed. Those
+are in the export too, for their state, and the site transitions them instead
+of importing them: an import reindexes an item's whole text, a PDF's included.
 
 Both exports come from the same place, so any difference in an item's
 data.json or its files is a change, and the item is sent whole. Nothing is
@@ -38,8 +41,9 @@ def plan_delta(
     ignored_fields: frozenset[str] = frozenset(),
 ) -> dict[str, Any]:
     """Write the delta from `previous` to `new` into `out`, and return what it
-    does, by path: creates, updates, moves (sent at their new path, changed or
-    not) and deletes. `ignored_fields` are left out of the compare."""
+    does, by path: creates, updates, states (review state alone changed),
+    moves (sent at their new path, changed or not) and deletes.
+    `ignored_fields` are left out of the compare."""
     previous_tree, previous_dirs = load_exportimport_tree(Path(previous) / "content")
     new_tree, new_dirs = load_exportimport_tree(Path(new) / "content")
     previous_by_uid = {data["UID"]: rel for rel, data in previous_tree.items()}
@@ -55,8 +59,13 @@ def plan_delta(
         ]
         return data, files
 
+    def without_state(found: tuple) -> tuple:
+        data, files = found
+        return {k: v for k, v in data.items() if k != "review_state"}, files
+
     creates: list[str] = []
     updates: list[str] = []
+    states: list[str] = []
     moves: list[dict[str, str]] = []
     for rel, data in new_tree.items():
         was = previous_by_uid.get(data["UID"])
@@ -65,11 +74,16 @@ def plan_delta(
             continue
         if was != rel:
             moves.append({"src": was, "dst": rel})
-        elif item(previous_tree, previous_dirs, previous, was) != item(
-            new_tree, new_dirs, new, rel
-        ):
+            continue
+        before = item(previous_tree, previous_dirs, previous, was)
+        after = item(new_tree, new_dirs, new, rel)
+        if before == after:
+            continue
+        if without_state(before) == without_state(after):
+            states.append(rel)
+        else:
             updates.append(rel)
-    sent = sorted({*updates, *(m["dst"] for m in moves)})
+    sent = sorted({*updates, *states, *(m["dst"] for m in moves)})
     build_subset_dir(
         ChangeSet(creates=sorted(creates), updates=sent),
         Path(new) / "content",
@@ -84,9 +98,12 @@ def plan_delta(
     )
     deletes = [previous_tree[rel]["UID"] for rel in gone]
     (Path(out) / "deletes.json").write_text(json.dumps(deletes, indent=2) + "\n")
+    state_uids = [new_tree[rel]["UID"] for rel in sorted(states)]
+    (Path(out) / "states.json").write_text(json.dumps(state_uids, indent=2) + "\n")
     return {
         "creates": sorted(creates),
         "updates": sorted(updates),
+        "states": sorted(states),
         "moves": sorted(moves, key=lambda m: m["dst"]),
         "deletes": gone,
     }

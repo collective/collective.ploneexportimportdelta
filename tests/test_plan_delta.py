@@ -56,14 +56,33 @@ def test_a_moved_item_is_sent_at_its_new_path(tmp_path):
     assert report["moves"] == [{"src": "changed", "dst": "renamed"}]
 
 
-def test_a_state_change_is_sent(tmp_path):
+def test_a_state_change_alone_is_sent_as_a_state(tmp_path):
+    """Only the review state changed: the site transitions the item and does
+    not re-import it (a re-import reindexes the item's whole text, a PDF's
+    included). Its data.json still goes, as the state is read from it."""
     previous = write_export(
         tmp_path / "previous", [{**KEPT, "review_state": "private"}]
     )
     new = write_export(tmp_path / "new", [{**KEPT, "review_state": "published"}])
     delta = tmp_path / "delta"
-    plan_delta(previous, new, delta)
+    report = plan_delta(previous, new, delta)
     assert shipped(delta) == ["/kept"]
+    assert json.loads((delta / "states.json").read_text()) == [KEPT["UID"]]
+    assert report["states"] == ["kept"]
+    assert report["updates"] == []
+
+
+def test_a_state_change_with_another_change_is_an_update(tmp_path):
+    previous = write_export(
+        tmp_path / "previous", [{**KEPT, "review_state": "private"}]
+    )
+    new = write_export(
+        tmp_path / "new", [{**KEPT, "review_state": "published", "title": "New"}]
+    )
+    delta = tmp_path / "delta"
+    report = plan_delta(previous, new, delta)
+    assert json.loads((delta / "states.json").read_text()) == []
+    assert report["updates"] == ["kept"]
 
 
 def test_nothing_changed_sends_nothing(tmp_path):
@@ -73,6 +92,7 @@ def test_nothing_changed_sends_nothing(tmp_path):
     plan_delta(previous, new, delta)
     assert shipped(delta) == []
     assert json.loads((delta / "deletes.json").read_text()) == []
+    assert json.loads((delta / "states.json").read_text()) == []
 
 
 def test_the_delta_brings_the_site_to_the_new_export(site, tmp_path):  # noqa: F811
