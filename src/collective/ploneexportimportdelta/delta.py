@@ -17,12 +17,15 @@ item it leaves out is one that did not change), so the caller names them.
 from __future__ import annotations
 
 from .apply import apply_changeset
+from .classify import layout_redirects
 from .classify import load_exportimport_tree
 from .classify import SITE_ROOT
 from collections.abc import Iterable
 from pathlib import Path
 from plone import api
 from typing import Any
+
+import json
 
 
 class StaleCounter(Exception):
@@ -123,6 +126,16 @@ def import_delta(
         raise StaleCounter(counter, current)
     tree, dirs = load_exportimport_tree(Path(export) / "content")
     changeset = plan(site, tree, deletes, states)
+    # Redirects the export names (its redirects.json, as plone.exportimport
+    # writes them, under the site's physical path): added, keeping any the
+    # site already has.
+    redirects_file = Path(export) / "redirects.json"
+    if redirects_file.exists():
+        changeset["redirects"] = layout_redirects(
+            json.loads(redirects_file.read_text()),
+            {},
+            "/".join(site.getPhysicalPath()),
+        )
     # The engine's own check that nothing changed while it was planned: here
     # planning and applying are one transaction.
     changeset["base_tid"] = site._p_jar.db().storage.lastTransaction().hex()

@@ -146,3 +146,17 @@ def test_an_ignored_field_is_not_a_change(tmp_path):
     delta = tmp_path / "delta"
     plan_delta(previous, new, delta, ignored_fields=frozenset({"subjects"}))
     assert shipped(delta) == []
+
+
+def test_redirects_the_new_export_adds_are_sent(tmp_path):
+    previous = write_export(tmp_path / "previous", [KEPT])
+    new = write_export(tmp_path / "new", [KEPT])
+    (previous / "redirects.json").write_text(json.dumps({"/plone/old": "/plone/kept"}))
+    (new / "redirects.json").write_text(
+        json.dumps({"/plone/old": "/plone/kept", "/plone/renamed": "/plone/kept"})
+    )
+    delta = tmp_path / "delta"
+    plan_delta(previous, new, delta)
+    assert json.loads((delta / "redirects.json").read_text()) == {
+        "/plone/renamed": "/plone/kept"
+    }

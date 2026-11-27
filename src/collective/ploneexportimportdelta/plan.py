@@ -7,6 +7,8 @@ move (a moved item at its new path: the site finds it by UID),
 `states.json`, the UIDs of the items whose review state alone changed. Those
 are in the export too, for their state, and the site transitions them instead
 of importing them: an import reindexes an item's whole text, a PDF's included.
+`redirects.json` holds the redirects the new export adds or changes; the site
+adds them, keeping any it already has.
 
 Both exports come from the same place, so any difference in an item's
 data.json or its files is a change, and the item is sent whole. Nothing is
@@ -31,6 +33,23 @@ import sys
 
 
 WHOLE_FILES = ("relations.json", "principals.json", "site-settings.json")
+
+
+def _redirects(export: Path) -> dict[str, str]:
+    path = export / "redirects.json"
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
+def _write_whole_files(previous: Path, new: Path, out: Path) -> None:
+    """The files the import reads whole, as `new` has them, and the redirects
+    `new` adds or points somewhere else."""
+    for name in WHOLE_FILES:
+        if (new / name).exists():
+            shutil.copy2(new / name, out / name)
+    before = _redirects(previous)
+    added = {old: to for old, to in _redirects(new).items() if before.get(old) != to}
+    if added:
+        (out / "redirects.json").write_text(json.dumps(added, indent=2) + "\n")
 
 
 def plan_delta(
@@ -90,9 +109,7 @@ def plan_delta(
         Path(out),
         dir_for=new_dirs.__getitem__,
     )
-    for name in WHOLE_FILES:
-        if (Path(new) / name).exists():
-            shutil.copy2(Path(new) / name, Path(out) / name)
+    _write_whole_files(Path(previous), Path(new), Path(out))
     gone = sorted(
         rel for rel, data in previous_tree.items() if data["UID"] not in new_uids
     )

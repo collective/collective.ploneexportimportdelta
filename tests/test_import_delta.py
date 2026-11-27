@@ -199,3 +199,17 @@ def test_a_state_for_a_uid_the_site_lacks_fails(site, tmp_path):
     delta = write_export(tmp_path / "delta", [{**ADDED, "review_state": "published"}])
     with pytest.raises(LookupError):
         deploy(portal, delta, deletes=[], states=[ADDED["UID"]], counter=counter)
+
+
+def test_a_redirect_the_export_names_is_added(site, tmp_path):
+    portal, counter = site
+    delta = write_export(tmp_path / "delta", [])
+    site_path = "/".join(portal.getPhysicalPath())
+    (delta / "redirects.json").write_text(
+        json.dumps({f"{site_path}/renamed": f"{site_path}/kept"})
+    )
+    report = deploy(portal, delta, deletes=[], counter=counter)
+    assert report["committed"] is True, report
+    transaction.begin()
+    storage = getUtility(IRedirectionStorage)
+    assert storage.get(f"{site_path}/renamed") == f"{site_path}/kept"
